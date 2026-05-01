@@ -87,11 +87,8 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "rh — edit files by stable line hash, not line number.")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Each line in a file is assigned a persistent 4-letter hash the first time")
-	fmt.Fprintln(os.Stderr, "it is read. Hashes survive edits: lines outside the changed region keep")
-	fmt.Fprintln(os.Stderr, "their original hashes across every read, write, and append.")
+	fmt.Fprintln(os.Stderr, "rh — agent file editing CLI tool.")
+	fmt.Fprintln(os.Stderr, "Designed for efficient input and output from AI agents by minimizing reads and reducing output tokens for writing.")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "COMMANDS")
 	fmt.Fprintln(os.Stderr, "")
