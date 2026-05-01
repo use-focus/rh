@@ -1,3 +1,3 @@
-module github.com/miri/tools/regohash
+module github.com/use-focus/rh
 
 go 1.25.0
