@@ -49,7 +49,8 @@ func loadCache() (*Cache, error) {
 	}
 	var c Cache
 	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("corrupt cache: %v", err)
+		fmt.Fprintf(os.Stderr, "warning: corrupt cache (resetting): %v\n", err)
+		return &Cache{Files: make(map[string]FileState)}, nil
 	}
 	if c.Files == nil {
 		c.Files = make(map[string]FileState)
