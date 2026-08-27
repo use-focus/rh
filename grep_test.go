@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-func TestGrepFile_RegexpAlternation(t *testing.T) {
+func TestRGFile_RegexpAlternation(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "const user = useQuery()\nconst save = useMutation()\nconst idle = noop()\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{`useQuery|useMutation`, path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{`useQuery|useMutation`, path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -31,13 +31,13 @@ func TestGrepFile_RegexpAlternation(t *testing.T) {
 	}
 }
 
-func TestGrepFile_GrepStyleEscapedAlternation(t *testing.T) {
+func TestRGFile_AlternationAcrossNames(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "CurrentUser\nRequireSuperadmin\nRegularUser\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{`CurrentUser\|RequireSuperadmin`, path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{`CurrentUser|RequireSuperadmin`, path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -52,21 +52,31 @@ func TestGrepFile_GrepStyleEscapedAlternation(t *testing.T) {
 	}
 }
 
-func TestGrepFile_InvalidRegexp(t *testing.T) {
+func TestRGFile_InvalidRegexp(t *testing.T) {
 	path := tempFile(t, "anything\n")
-	err := grepFiles([]string{`[`, path})
-	if err == nil || !strings.Contains(err.Error(), "grep failed") {
-		t.Fatalf("expected grep failure, got %v", err)
+	err := rgFiles([]string{`[`, path})
+	if err == nil || !strings.Contains(err.Error(), "rg failed") {
+		t.Fatalf("expected rg failure, got %v", err)
 	}
 }
 
-func TestGrepFile_PassesGrepFlags(t *testing.T) {
+func TestRGFiles_RejectsBroadSearch(t *testing.T) {
+	setupCache(t)
+	path := tempFile(t, strings.Repeat("x", maxRGOutputCharacters)+"\n")
+
+	err := rgFiles([]string{"x", path})
+	if err == nil || !strings.Contains(err.Error(), "search was too broad") {
+		t.Fatalf("expected broad search failure, got %v", err)
+	}
+}
+
+func TestRGFile_PassesRGFlags(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "Needle\nneedle\nhaystack\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-i", "needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"-i", "needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -81,13 +91,13 @@ func TestGrepFile_PassesGrepFlags(t *testing.T) {
 	}
 }
 
-func TestGrepFile_ContextFlagsIncludeContextLines(t *testing.T) {
+func TestRGFile_ContextFlagsIncludeContextLines(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "before\nneedle\nafter\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-A", "1", "needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"-A", "1", "needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -95,21 +105,21 @@ func TestGrepFile_ContextFlagsIncludeContextLines(t *testing.T) {
 		t.Errorf("expected matching line, got:\n%s", out)
 	}
 	if !strings.Contains(out, "after") {
-		t.Errorf("expected grep context line, got:\n%s", out)
+		t.Errorf("expected rg context line, got:\n%s", out)
 	}
 	if strings.Contains(out, "before") {
-		t.Errorf("unexpected line outside grep context, got:\n%s", out)
+		t.Errorf("unexpected line outside rg context, got:\n%s", out)
 	}
 }
 
-func TestGrepFile_MultipleFilesIncludePathAndHash(t *testing.T) {
+func TestRGFile_MultipleFilesIncludePathAndHash(t *testing.T) {
 	setupCache(t)
 	first := tempFile(t, "target first\n")
 	second := tempFile(t, "target second\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"target", first, second}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"target", first, second}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -127,50 +137,50 @@ func TestGrepFile_MultipleFilesIncludePathAndHash(t *testing.T) {
 	}
 }
 
-func TestGrepFile_OnlyMatchingOutputKeepsGrepContent(t *testing.T) {
+func TestRGFile_OnlyMatchingOutputKeepsRGContent(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "prefix needle suffix\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-o", "needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"-o", "needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
 	if !strings.Contains(out, " needle") {
-		t.Errorf("expected grep -o content, got:\n%s", out)
+		t.Errorf("expected rg -o content, got:\n%s", out)
 	}
 	if strings.Contains(out, "prefix") || strings.Contains(out, "suffix") {
-		t.Errorf("expected only matched content from grep -o, got:\n%s", out)
+		t.Errorf("expected only matched content from rg -o, got:\n%s", out)
 	}
 }
 
-func TestGrepFile_ForcesFilenameWhenNoFilenameFlagIsPassed(t *testing.T) {
+func TestRGFile_ForcesFilenameWhenNoFilenameFlagIsPassed(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "needle\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-h", "needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"--no-filename", "needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
 	if !strings.Contains(out, "MATCH - "+path+":") {
-		t.Errorf("expected file path despite -h, got:\n%s", out)
+		t.Errorf("expected file path despite --no-filename, got:\n%s", out)
 	}
 	if !strings.Contains(out, " needle") {
 		t.Errorf("expected matching content, got:\n%s", out)
 	}
 }
 
-func TestGrepFiles_OutputReplacesLineNumbersWithExpectedHashes(t *testing.T) {
+func TestRGFiles_OutputReplacesLineNumbersWithExpectedHashes(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "first\nsecond target\nthird target\n")
 	wantHashes := readHashesFor(t, path)
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"target", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"target", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -191,14 +201,14 @@ func TestGrepFiles_OutputReplacesLineNumbersWithExpectedHashes(t *testing.T) {
 	}
 }
 
-func TestGrepFiles_ContextOutputUsesHashAndContextSeparator(t *testing.T) {
+func TestRGFiles_ContextOutputUsesHashAndContextSeparator(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "before\nneedle\nafter\n")
 	wantHashes := readHashesFor(t, path)
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-A", "1", "needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"-A", "1", "needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -220,13 +230,13 @@ func TestGrepFiles_ContextOutputUsesHashAndContextSeparator(t *testing.T) {
 	}
 }
 
-func TestGrepFiles_ContextGroupsKeepGrepSeparator(t *testing.T) {
+func TestRGFiles_ContextGroupsKeepRGSeparator(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "target one\nafter one\ngap\ntarget two\nafter two\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-A", "1", "target", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"-A", "1", "target", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -242,13 +252,13 @@ func TestGrepFiles_ContextGroupsKeepGrepSeparator(t *testing.T) {
 	}
 }
 
-func TestGrepFiles_NoMatchesProducesNoOutputAndNoCacheEntry(t *testing.T) {
+func TestRGFiles_NoMatchesProducesNoOutputAndNoCacheEntry(t *testing.T) {
 	setupCache(t)
 	path := tempFile(t, "alpha\nbeta\n")
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"needle", path}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"needle", path}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 	if out != "" {
@@ -268,14 +278,14 @@ func TestGrepFiles_NoMatchesProducesNoOutputAndNoCacheEntry(t *testing.T) {
 	}
 }
 
-func TestGrepFiles_RegistersEveryMatchedFile(t *testing.T) {
+func TestRGFiles_RegistersEveryMatchedFile(t *testing.T) {
 	setupCache(t)
 	first := tempFile(t, "target first\n")
 	second := tempFile(t, "target second\n")
 
 	captureStdout(t, func() {
-		if err := grepFiles([]string{"target", first, second}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"target", first, second}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -298,7 +308,7 @@ func TestGrepFiles_RegistersEveryMatchedFile(t *testing.T) {
 	}
 }
 
-func TestGrepFiles_RecursiveSearchHashesDiscoveredFiles(t *testing.T) {
+func TestRGFiles_RecursiveSearchHashesDiscoveredFiles(t *testing.T) {
 	setupCache(t)
 	dir := t.TempDir()
 	first := filepath.Join(dir, "first.txt")
@@ -314,8 +324,8 @@ func TestGrepFiles_RecursiveSearchHashesDiscoveredFiles(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := grepFiles([]string{"-R", "target", dir}); err != nil {
-			t.Fatalf("grepFiles: %v", err)
+		if err := rgFiles([]string{"target", dir}); err != nil {
+			t.Fatalf("rgFiles: %v", err)
 		}
 	})
 
@@ -330,8 +340,8 @@ func TestGrepFiles_RecursiveSearchHashesDiscoveredFiles(t *testing.T) {
 	}
 }
 
-func TestGrepRecords_ParsesColonInPath(t *testing.T) {
-	records := parseGrepRecords("/tmp/rh:colon.txt\x001:needle\n")
+func TestRGRecords_ParsesColonInPath(t *testing.T) {
+	records := parseRGRecords("/tmp/rh:colon.txt\x001:needle\n")
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -346,9 +356,9 @@ func TestGrepRecords_ParsesColonInPath(t *testing.T) {
 	}
 }
 
-func TestForceFilenameOutputRemovesNoFilenameForms(t *testing.T) {
-	got := forceFilenameOutput([]string{"-hi", "--no-filename", "needle", "file.txt"})
-	want := []string{"-i", "needle", "file.txt"}
+func TestForceFilenameOutputRemovesNoFilenameFlag(t *testing.T) {
+	got := forceFilenameOutput([]string{"--no-filename", "needle", "file.txt"})
+	want := []string{"needle", "file.txt"}
 	if len(got) != len(want) {
 		t.Fatalf("want %v, got %v", want, got)
 	}

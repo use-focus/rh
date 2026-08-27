@@ -201,13 +201,19 @@ func previewLines(path, startHash, endHash string) error {
 	return saveCache(c)
 }
 
-type grepFileState struct {
+const (
+	estimatedCharactersPerToken = 4
+	maxEstimatedSearchTokens    = 4_000
+	maxRGOutputCharacters       = estimatedCharactersPerToken * maxEstimatedSearchTokens
+)
+
+type rgFileState struct {
 	hashes []string
 }
 
-func grepFiles(grepArgs []string) error {
-	if len(grepArgs) == 0 {
-		return fmt.Errorf("missing grep pattern")
+func rgFiles(rgArgs []string) error {
+	if len(rgArgs) == 0 {
+		return fmt.Errorf("missing rg pattern")
 	}
 
 	c, err := loadCache()
@@ -215,19 +221,19 @@ func grepFiles(grepArgs []string) error {
 		return err
 	}
 
-	records, err := grepRecords(grepArgs)
+	records, err := rgRecords(rgArgs)
 	if err != nil {
 		return err
 	}
 
-	files := make(map[string]grepFileState)
-	renderer := grepBlockRenderer{}
+	files := make(map[string]rgFileState)
+	renderer := rgBlockRenderer{}
 	for _, record := range records {
 		if record.isSeparator() {
 			renderer.endGroup()
 			continue
 		}
-		hash, ok, err := hashForGrepRecord(c, files, record.path, record.lineNumber)
+		hash, ok, err := hashForRGRecord(c, files, record.path, record.lineNumber)
 		if err != nil {
 			return err
 		}
@@ -242,20 +248,20 @@ func grepFiles(grepArgs []string) error {
 	return saveCache(c)
 }
 
-type grepBlockRenderer struct {
+type rgBlockRenderer struct {
 	currentPath string
 	inGroup     bool
 	wroteGroup  bool
 }
 
-func (r *grepBlockRenderer) print(path, hash, content string) {
+func (r *rgBlockRenderer) print(path, hash, content string) {
 	if !r.inGroup || r.currentPath != path {
 		r.startGroup(path)
 	}
 	fmt.Printf("%s %s\n", hash, content)
 }
 
-func (r *grepBlockRenderer) startGroup(path string) {
+func (r *rgBlockRenderer) startGroup(path string) {
 	if r.wroteGroup {
 		fmt.Println()
 	}
@@ -265,12 +271,12 @@ func (r *grepBlockRenderer) startGroup(path string) {
 	r.wroteGroup = true
 }
 
-func (r *grepBlockRenderer) endGroup() {
+func (r *rgBlockRenderer) endGroup() {
 	r.inGroup = false
 	r.currentPath = ""
 }
 
-func hashForGrepRecord(c *Cache, files map[string]grepFileState, path string, lineNumber int) (string, bool, error) {
+func hashForRGRecord(c *Cache, files map[string]rgFileState, path string, lineNumber int) (string, bool, error) {
 	if lineNumber < 1 {
 		return "", false, nil
 	}
@@ -298,7 +304,7 @@ func hashForGrepRecord(c *Cache, files map[string]grepFileState, path string, li
 		}
 		c.Files[abs] = state
 
-		file = grepFileState{
+		file = rgFileState{
 			hashes: state.LineHashes,
 		}
 		files[path] = file
@@ -311,20 +317,43 @@ func hashForGrepRecord(c *Cache, files map[string]grepFileState, path string, li
 	return file.hashes[i], true, nil
 }
 
-func grepRecords(grepArgs []string) ([]grepRecord, error) {
-	args := []string{"-H", "-n", "--null"}
-	if shouldUseExtendedGrep(grepArgs) {
-		args = append(args, "-E")
-	}
-	args = append(args, forceFilenameOutput(grepArgs)...)
+type cappedBuffer struct {
+	buffer   bytes.Buffer
+	limit    int
+	exceeded bool
+}
 
-	var stdout bytes.Buffer
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	remaining := b.limit - b.buffer.Len()
+	if remaining > 0 {
+		writeLength := min(len(p), remaining)
+		_, _ = b.buffer.Write(p[:writeLength])
+	}
+	if len(p) > remaining {
+		b.exceeded = true
+	}
+	return len(p), nil
+}
+
+func (b *cappedBuffer) String() string {
+	return b.buffer.String()
+}
+
+func rgRecords(rgArgs []string) ([]rgRecord, error) {
+	args := []string{"--with-filename", "--line-number", "--null"}
+	args = append(args, forceFilenameOutput(rgArgs)...)
+
+	stdout := cappedBuffer{limit: maxRGOutputCharacters}
 	var stderr bytes.Buffer
-	cmd := exec.Command("grep", args...)
+	cmd := exec.Command("rg", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if stdout.exceeded {
+		return nil, fmt.Errorf("search was too broad: rg output exceeds the estimated 4,000-token limit")
+	}
+	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return nil, nil
 		}
@@ -332,55 +361,23 @@ func grepRecords(grepArgs []string) ([]grepRecord, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("grep failed: %s", msg)
+		return nil, fmt.Errorf("rg failed: %s", msg)
 	}
 
-	return parseGrepRecords(stdout.String()), nil
+	return parseRGRecords(stdout.String()), nil
 }
 
-func forceFilenameOutput(grepArgs []string) []string {
-	forced := make([]string, 0, len(grepArgs))
-	for _, arg := range grepArgs {
-		switch {
-		case arg == "-h" || arg == "--no-filename":
-			continue
-		case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "h"):
-			withoutH := strings.ReplaceAll(arg, "h", "")
-			if withoutH != "-" {
-				forced = append(forced, withoutH)
-			}
-		default:
+func forceFilenameOutput(rgArgs []string) []string {
+	forced := make([]string, 0, len(rgArgs))
+	for _, arg := range rgArgs {
+		if arg != "--no-filename" {
 			forced = append(forced, arg)
 		}
 	}
 	return forced
 }
 
-func shouldUseExtendedGrep(grepArgs []string) bool {
-	for _, arg := range grepArgs {
-		if strings.Contains(arg, `\|`) {
-			return false
-		}
-		if arg == "--" {
-			return true
-		}
-		if arg == "-E" || arg == "-F" || arg == "-G" || arg == "-P" ||
-			arg == "--extended-regexp" || arg == "--fixed-strings" ||
-			arg == "--basic-regexp" || arg == "--perl-regexp" {
-			return false
-		}
-		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") {
-			for _, ch := range arg[1:] {
-				if ch == 'E' || ch == 'F' || ch == 'G' || ch == 'P' {
-					return false
-				}
-			}
-		}
-	}
-	return true
-}
-
-type grepRecord struct {
+type rgRecord struct {
 	raw           string
 	path          string
 	lineNumber    int
@@ -389,18 +386,18 @@ type grepRecord struct {
 	content       string
 }
 
-func (r grepRecord) displayRaw() string {
+func (r rgRecord) displayRaw() string {
 	return strings.ReplaceAll(r.raw, "\x00", ":")
 }
 
-func (r grepRecord) isSeparator() bool {
+func (r rgRecord) isSeparator() bool {
 	return r.raw == "--"
 }
 
-func parseGrepRecords(grepOutput string) []grepRecord {
-	var records []grepRecord
-	for _, line := range strings.Split(strings.TrimRight(grepOutput, "\n"), "\n") {
-		record := grepRecord{raw: line}
+func parseRGRecords(rgOutput string) []rgRecord {
+	var records []rgRecord
+	for _, line := range strings.Split(strings.TrimRight(rgOutput, "\n"), "\n") {
+		record := rgRecord{raw: line}
 		null := strings.IndexByte(line, 0)
 		if null == -1 {
 			records = append(records, record)

@@ -10,17 +10,18 @@ xsnk }
 ```
 
 **To search for a string and find the hashes near it use:**
-- `rh grep <grep_args...>` — runs system `grep`, then replaces grep line numbers with `rh` hashes. Use this to locate specific lines across one file, many files, or recursive searches without reading whole files. NOTE: YOU CANNOT GREP HASH LINES / HASHES produced by `rh`.
+- `rh rg <rg_args...>` runs `rg` and replaces line numbers with `rh` hashes. Use it to search one or more files. NOTE: YOU CANNOT SEARCH HASH LINES PRODUCED BY `rh`.
   - Examples:
-    - `rh grep 'useQuery|useMutation' file.ts`
-    - `rh grep -i -E 'currentuser|superadmin' src/*.ts`
-    - `rh grep -R -A 2 'func main' .`
-  - Matching flags and file args are passed to grep. Flags like `-i`, `-E`, `-F`, `-w`, `-A`, `-B`, `-C`, multiple files, and recursive `-R` searches work.
+    - `rh rg 'useQuery|useMutation' file.ts`
+    - `rh rg -i 'currentuser|superadmin' src/*.ts`
+    - `rh rg -A 2 'func main' .`
+  - `rh` passes the arguments to `rg`. Flags such as `-i`, `-F`, `-w`, `-A`, `-B`, and `-C` work.
+  - The search fails if the `rg` output exceeds 16,000 characters. This value estimates 4,000 tokens.
 
 **To read / preview between 2 hashes use:**
 - `rh preview <filepath> <start_hash> <end_hash>` — prints a specific range you already have hashes for, without modifying the file.
 
-`rh read`, `rh preview`, and `rh grep` register any displayed/matched files in the cache, so a write can follow immediately after them.
+`rh read`, `rh preview`, and `rh rg` register displayed or matched files in the cache. You can then write to these files.
 
 **Then edit using those hashes:**
 
@@ -51,6 +52,6 @@ EOF
 - Lines inside an edited range get brand-new hashes, shown immediately inside the <NewLines> block.
 - Deleted lines lose their hashes permanently and should NOT be used again.
 - After a write or append, you do NOT need to re-read the file before the next write. The hashes printed in the output are live and correct. The hashes in the rest of the file will be stable as well.
-- If the file is modified by anything other than rh, cached hashes may become stale. Run rh read <filepath> or rh grep ... <filepath> to resync before writing.
+- If another tool modifies the file, the cached hashes can become stale. Run rh read <filepath> or rh rg ... <filepath> again.
 
 

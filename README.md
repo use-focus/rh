@@ -5,7 +5,7 @@
 For best usage, add the [system prompt](prompts/SYSTEM.md) to your agent.
 
 ## Install
-Requires Go 1.25+.
+Requires Go 1.25+ and ripgrep (`rg`).
 
 **Install directly:**
 
@@ -28,7 +28,7 @@ make install
 | Command | Description |
 |---|---|
 | `rh read <file>` | Print every line prefixed with its hash. Run this first to register a file. |
-| `rh grep <grep_args...>` | Run grep and replace line numbers with stable hashes. Registered files are ready to write immediately. |
+| `rh rg <rg_args...>` | Run `rg` and replace line numbers with stable hashes. The command registers each matched file. |
 | `rh preview <file> <start_hash> <end_hash>` | Show a line range without modifying the file. Registers the file for subsequent writes. |
 | `rh write <file> <start_hash> <end_hash>` | Replace lines from `start_hash` to `end_hash` (inclusive) with content from stdin. Empty stdin deletes the range. |
 | `rh append <file>` | Add content from stdin to the end of the file. |
@@ -64,13 +64,15 @@ echo -n | rh write main.go efgh ijkl
 echo "// end of file" | rh append main.go
 ```
 
-**Grep across files:**
+**Search across files:**
 
 ```sh
-rh grep -R 'func ' .
-rh grep -i -E 'usage|error' *.go
+rh rg 'func ' .
+rh rg -i 'usage|error' *.go
 ```
+
+`rh rg` rejects output above 16,000 characters. This value estimates 4,000 tokens at four characters per token.
 
 ## Guards
 
-`rh write` and `rh append` are blocked if the file was modified outside of `rh` since the last read/grep/preview/write. Run `rh read`, `rh grep`, or `rh preview` to resync before writing.
+`rh write` and `rh append` are blocked if the file was modified outside of `rh` since the last read/rg/preview/write. Run `rh read`, `rh rg`, or `rh preview` to resync before writing.

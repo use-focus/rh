@@ -122,7 +122,7 @@ func checkWriteAllowed(filePath string) error {
 		}
 		if currentHash != state.ContentHash {
 			return fmt.Errorf(
-				"stale hashes: file changed externally since your last rh read/grep/preview/write\nre-read before writing: rh read %s", filePath,
+				"stale hashes: file changed externally since your last rh read/rg/preview/write\nre-read before writing: rh read %s", filePath,
 			)
 		}
 		return nil
